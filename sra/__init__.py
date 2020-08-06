@@ -3,12 +3,14 @@ Tools for navigating the SRA API and downloading fastqs
 """
 import html
 import json
-from urllib.parse import urlencode, urljoin
-from urllib.request import urlopen
+from urllib.parse import urljoin
 import xml.etree.ElementTree as ET
+
+import requests
 
 EUTILS_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
 ENA_URL = "ftp://ftp.sra.ebi.ac.uk/vol1/fastq"
+TIMEOUT = 2
 
 
 class QueryError(Exception):
@@ -34,20 +36,23 @@ def get_accession_id(accession: str):
             than 200 or a JSON result that doesn't contain the expected
             fields would cause this error.
     """
-    query = urlencode({"db": "sra", "retmode": "json", "term": accession})
-    url = urljoin(EUTILS_URL, "esearch.fcgi?" + query)
-    with urlopen(url, timeout=2) as result:
-        if result.getcode() == 200:
-            try:
-                ids = json.loads(result.read())["esearchresult"]["idlist"]
-            except (json.JSONDecodeError, KeyError) as error:
-                raise QueryError("bad JSON response") from error
-            if len(ids) == 0:
-                raise QueryError("no result for that search")
-            if len(ids) > 1:
-                raise QueryError("multiple results for that search")
-            return ids[0]
-        raise QueryError("HTTP error: {}".format(result.getcode()))
+    query = {"db": "sra", "retmode": "json", "term": accession}
+    url = urljoin(EUTILS_URL, "esearch.fcgi")
+    try:
+        result = requests.get(url, params=query, timeout=TIMEOUT)
+    except requests.RequestException as error:
+        raise QueryError("Problem with request.") from error
+    if result.status_code == requests.codes["✓"]:
+        try:
+            ids = result.json()["esearchresult"]["idlist"]
+        except (ValueError, KeyError) as error:
+            raise QueryError("bad JSON response") from error
+        if len(ids) == 0:
+            raise QueryError("no result for that search")
+        if len(ids) > 1:
+            raise QueryError("multiple results for that search")
+        return ids[0]
+    raise QueryError("HTTP error: {}".format(result.status_code))
 
 
 def get_id_run_accessions(sra_id: str):
@@ -67,20 +72,25 @@ def get_id_run_accessions(sra_id: str):
             as an unparseable JSON response
     """
     # run the query
-    query = urlencode({"db": "sra", "id": sra_id, "retmode": "json"})
-    url = urljoin(EUTILS_URL, "esummary.fcgi?" + query)
-    with urlopen(url, timeout=2) as result:
-        try:
-            json_loaded = json.loads(result.read())
+    query = {"db": "sra", "id": sra_id, "retmode": "json"}
+    url = urljoin(EUTILS_URL, "esummary.fcgi")
+    try:
+        result = requests.get(url, params=query, timeout=TIMEOUT)
+    except requests.RequestException as error:
+        raise QueryError("Problem with request.") from error
 
-            # get a list of accessions associated with this library
-            runs_xml = html.unescape(json_loaded["result"][sra_id]["runs"])
-            runs_xml = "<runs>" + runs_xml + "</runs>"
-            accessions = [run.attrib["acc"] for run in ET.fromstring(runs_xml)]
-        except (json.JSONDecodeError, KeyError, ET.ParseError) as error:
-            raise QueryError("Could not process query result") from error
+    if result.status_code != requests.codes["✓"]:
+        raise QueryError("HTTP error: {}".format(result.status_code))
 
-        return accessions
+    try:
+        # get a list of accessions associated with this library
+        runs_xml = html.unescape(result.json()["result"][sra_id]["runs"])
+        runs_xml = "<runs>" + runs_xml + "</runs>"
+        accessions = [run.attrib["acc"] for run in ET.fromstring(runs_xml)]
+    except (ValueError, KeyError, ET.ParseError) as error:
+        raise QueryError("Could not process query result") from error
+
+    return accessions
 
 
 def get_fastq_url(sra_run_accession: str):

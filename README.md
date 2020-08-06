@@ -21,7 +21,7 @@ sra_downloader SRX4831284
 ```
 
 ## TODO
-* Switch to requests API instead of urllib for RESTful stuff
 * Prompt user to make sure request is correct before starting download
 * Add ability to use NCBI key
 * Add pauses between NCBI requests to prevent 429 errors
+* Implement unit and integration tests
