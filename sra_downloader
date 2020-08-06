@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import time
 from typing import Sequence
 
 import sra
@@ -120,6 +121,10 @@ def perform_ncbi_lookups(
         accession_ids.append(
             sra.get_accession_id(accession, api_key=ncbi_api_key)
         )
+        if ncbi_api_key is None:
+            time.sleep(0.5)
+        else:
+            time.sleep(0.1)
 
     # then, we can look up all the runs associated with those IDs.
     run_accessions = []
@@ -128,6 +133,11 @@ def perform_ncbi_lookups(
         run_accessions += sra.get_id_run_accessions(
             accession_id, api_key=ncbi_api_key
         )
+        if ncbi_api_key is None:
+            time.sleep(0.5)
+        else:
+            time.sleep(0.1)
+
     print("done with NCBI lookups", file=sys.stderr)
 
     return run_accessions
