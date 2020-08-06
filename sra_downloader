@@ -7,9 +7,7 @@ and download all associated fastqs.
 import argparse
 import os
 from pathlib import Path
-import posixpath
 import subprocess
-from urllib.parse import urlsplit
 import sys
 
 import sra
@@ -56,7 +54,11 @@ def main():
 
     # make sure outpath is ok
     if not args.out_dir.is_dir():
-        print("oops")  # TODO make error
+        print(
+            "Requested output directory does not exist or is not a directory",
+            file=sys.stderr
+        )
+        sys.exit(1)
 
     # first, we need to convert our list of accessions to a list of
     # runs, because some SRA accessions contain multiple runs
@@ -69,7 +71,7 @@ def main():
 
     # next, we convert our list of run accessions to a list of ftp URLs
     urls = []
-    for run_accession, library_type in run_accessions:
+    for run_accession in run_accessions:
         urls.append(sra.get_fastq_url(run_accession))
 
     # finally, use curl to download all the fastqs
