@@ -13,6 +13,21 @@ import sys
 import sra
 
 
+def get_api_env_or_none() -> str:
+    """Lookup NCBI_API_KEY environment variable.
+
+    Lookup NCBI_API_KEY environment variable. If it exists, return it.
+    Otherwise, return None.
+
+    Returns:
+        str: the value of the NCBI_API_KEY environment variable, if it
+            exists. If it doesn't exist, returns None.
+    """
+    if "NCBI_API_KEY" in os.environ:
+        return os.environ["NCBI_API_KEY"]
+    return None
+
+
 def parse_args():
     """parse command line arguments"""
     parser = argparse.ArgumentParser(
@@ -43,12 +58,23 @@ def parse_args():
         action="store_true",
         help="do not prompt to download; just go ahead and do it",
     )
+    parser.add_argument(
+        "-k",
+        "--ncbi-api-key",
+        help=(
+            "key for NCBI API. If not specified, uses environment variable"
+            " NCBI_API_KEY."
+        ),
+        default=get_api_env_or_none(),
+    )
     return parser.parse_args()
 
 
 def main():
     """main method of script"""
     args = parse_args()
+
+    # figure out whether an NCBI API key was specified
 
     # read accessions list
     accessions_to_lookup = []
@@ -68,12 +94,19 @@ def main():
 
     # first, we need to convert our list of accessions to a list of
     # runs, because some SRA accessions contain multiple runs
+    accession_ids = []
     print("looking up accession ids...", file=sys.stderr)
-    accession_ids = [sra.get_accession_id(a) for a in accessions_to_lookup]
+    for accession in accessions_to_lookup:
+        accession_ids.append(
+            sra.get_accession_id(accession, api_key=args.ncbi_api_key)
+        )
+
     run_accessions = []
     print("looking up accession runs...", file=sys.stderr)
     for accession_id in accession_ids:
-        run_accessions += sra.get_id_run_accessions(accession_id)
+        run_accessions += sra.get_id_run_accessions(
+            accession_id, api_key=args.ncbi_api_key
+        )
     print("done with NCBI lookups", file=sys.stderr)
 
     # next, we convert our list of run accessions to a list of ftp URLs

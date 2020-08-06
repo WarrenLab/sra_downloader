@@ -21,7 +21,6 @@ sra_downloader SRX4831284
 ```
 
 ## TODO
-* Add ability to use NCBI key
 * Add pauses between NCBI requests to prevent 429 errors
 * Implement unit and integration tests
 * Allow retries on HTTP errors

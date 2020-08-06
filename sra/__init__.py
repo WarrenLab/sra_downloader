@@ -3,6 +3,7 @@ Tools for navigating the SRA API and downloading fastqs
 """
 import html
 import json
+from typing import Sequence
 from urllib.parse import urljoin
 import xml.etree.ElementTree as ET
 
@@ -17,7 +18,7 @@ class QueryError(Exception):
     """Error raised when an NCBI query does not work"""
 
 
-def get_accession_id(accession: str):
+def get_accession_id(accession: str, api_key: str = None) -> str:
     """
     Given an SRA search term, look up its SRA id.
 
@@ -25,7 +26,8 @@ def get_accession_id(accession: str):
     accession, look up its numerical SRA id.
 
     Args:
-        accession: an SRA search term to look up
+        accession (str): an SRA search term to look up
+        api_key (str): an NCBI api key to use for the query
 
     Returns:
         str: the SRA numerical ID of the requested accession
@@ -37,6 +39,8 @@ def get_accession_id(accession: str):
             fields would cause this error.
     """
     query = {"db": "sra", "retmode": "json", "term": accession}
+    if api_key is not None:
+        query["api_key"] = api_key
     url = urljoin(EUTILS_URL, "esearch.fcgi")
     try:
         result = requests.get(url, params=query, timeout=TIMEOUT)
@@ -55,12 +59,13 @@ def get_accession_id(accession: str):
     raise QueryError("HTTP error: {}".format(result.status_code))
 
 
-def get_id_run_accessions(sra_id: str):
+def get_id_run_accessions(sra_id: str, api_key: str = None) -> Sequence[str]:
     """
     Given an SRA id, return a list associated runs.
 
     Args:
         sra_id: numerical SRA id to look up, from `get_accession_id()`
+        api_key (str): an NCBI api key to use for the query
 
     Returns:
         list: a list of strings where each string is an SRA run
@@ -73,6 +78,8 @@ def get_id_run_accessions(sra_id: str):
     """
     # run the query
     query = {"db": "sra", "id": sra_id, "retmode": "json"}
+    if api_key is not None:
+        query["api_key"] = api_key
     url = urljoin(EUTILS_URL, "esummary.fcgi")
     try:
         result = requests.get(url, params=query, timeout=TIMEOUT)
@@ -93,7 +100,7 @@ def get_id_run_accessions(sra_id: str):
     return accessions
 
 
-def get_fastq_url(sra_run_accession: str):
+def get_fastq_url(sra_run_accession: str) -> str:
     """
     Get ftp url for downloading SRA fastqs.
 
