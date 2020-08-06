@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from typing import Sequence
 
 import sra
 
@@ -70,11 +71,84 @@ def parse_args():
     return parser.parse_args()
 
 
+def check_outpath(outpath: Path) -> None:
+    """
+    Check specified outpath
+
+    Check specified outpath to make sure it exists and is a directory.
+    If it is, do nothing. If it's not, exit with an error message.
+
+    Args:
+        outpath: Path to check
+    """
+    if not outpath.is_dir():
+        print(
+            "Requested output directory does not exist or is not a directory",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
+def perform_ncbi_lookups(
+    accessions: Sequence[str], ncbi_api_key: str
+) -> Sequence[str]:
+    """
+    Given generic NCBI accessions, convert to SRA run accessions.
+
+    Given a bunch of NCBI accessions, such as project (SRP*),
+    experiment (SRX*), or run accessions, look them up in SRA and
+    return a list of associated SRA run accessions (SRR*). This
+    function may return more run accessions than the number of generic
+    accessions it was given, as projects and experiments can contain
+    multiple runs.
+
+    Args:
+        accessions: a list of SRA accessions. Can represent projects
+            (start with 'SRP'), experiments (start with 'SRX'), or
+            runs (start with 'SRR').
+
+    Returns:
+        a list of SRA run accessions associated with the generic
+            accessions given in the argument
+    """
+    # first, we need to convert our list of accessions to a list of IDs
+    # because you can only look up runs contained in a project or
+    # experiment if you have that accession's numerical ID.
+    accession_ids = []
+    print("looking up accession ids...", file=sys.stderr)
+    for accession in accessions:
+        accession_ids.append(
+            sra.get_accession_id(accession, api_key=ncbi_api_key)
+        )
+
+    # then, we can look up all the runs associated with those IDs.
+    run_accessions = []
+    print("looking up accession runs...", file=sys.stderr)
+    for accession_id in accession_ids:
+        run_accessions += sra.get_id_run_accessions(
+            accession_id, api_key=ncbi_api_key
+        )
+    print("done with NCBI lookups", file=sys.stderr)
+
+    return run_accessions
+
+
+def prompt_to_continue() -> None:
+    """ Ask the user if it's OK to start downloading """
+    responded_yes = False
+    while not responded_yes:
+        response = input("Start download? [Y/n]: ")
+        responded_yes = response in ["y", "Y", "yes", "Yes", "YES"]
+        if response in ["n", "N", "no", "No", "NO"]:
+            print(
+                "OK, not downloading anything. Goodbye!", file=sys.stderr
+            )
+            sys.exit(0)
+
+
 def main():
     """main method of script"""
     args = parse_args()
-
-    # figure out whether an NCBI API key was specified
 
     # read accessions list
     accessions_to_lookup = []
@@ -85,29 +159,12 @@ def main():
         accessions_to_lookup += args.accession
 
     # make sure outpath is ok
-    if not args.out_dir.is_dir():
-        print(
-            "Requested output directory does not exist or is not a directory",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    check_outpath(args.out_dir)
 
-    # first, we need to convert our list of accessions to a list of
-    # runs, because some SRA accessions contain multiple runs
-    accession_ids = []
-    print("looking up accession ids...", file=sys.stderr)
-    for accession in accessions_to_lookup:
-        accession_ids.append(
-            sra.get_accession_id(accession, api_key=args.ncbi_api_key)
-        )
-
-    run_accessions = []
-    print("looking up accession runs...", file=sys.stderr)
-    for accession_id in accession_ids:
-        run_accessions += sra.get_id_run_accessions(
-            accession_id, api_key=args.ncbi_api_key
-        )
-    print("done with NCBI lookups", file=sys.stderr)
+    # do all the NCBI lookups
+    run_accessions = perform_ncbi_lookups(
+        accessions_to_lookup, args.ncbi_api_key
+    )
 
     # next, we convert our list of run accessions to a list of ftp URLs
     print("\nDownloading the following accessions:", file=sys.stderr)
@@ -117,15 +174,7 @@ def main():
         print(urls[-1])
 
     if not args.no_prompt:
-        responded_yes = False
-        while not responded_yes:
-            response = input("Start download? [Y/n]: ")
-            responded_yes = response in ["y", "Y", "yes", "Yes", "YES"]
-            if response in ["n", "N", "no", "No", "NO"]:
-                print(
-                    "OK, not downloading anything. Goodbye!", file=sys.stderr
-                )
-                sys.exit(0)
+        prompt_to_continue()
 
     # finally, use curl to download all the fastqs
     print("Starting downloads...", file=sys.stderr)
