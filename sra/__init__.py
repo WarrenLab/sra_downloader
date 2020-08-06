@@ -8,7 +8,7 @@ from urllib.request import urlopen
 import xml.etree.ElementTree as ET
 
 EUTILS_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
-ENA_URL = "ftp://ftp.sra.ebi.ac.uk/vol1/"
+ENA_URL = "ftp://ftp.sra.ebi.ac.uk/vol1/fastq"
 
 
 def get_accession_id(accession: str):
@@ -26,7 +26,8 @@ def get_accession_id(accession: str):
         accession
     """
     query = urlencode({"db": "sra", "retmode": "json", "term": accession})
-    with urlopen(urljoin(EUTILS_URL, "esearch.fcgi?" + query)) as result:
+    url = urljoin(EUTILS_URL, "esearch.fcgi?" + query)
+    with urlopen(url, timeout=2) as result:
         if result.getcode() == 200:
             ids = json.loads(result.read())["esearchresult"]["idlist"]
             if len(ids) == 0:
@@ -56,11 +57,12 @@ def get_id_run_accessions(sra_id: str):
     """
     # run the query
     query = urlencode({"db": "sra", "id": sra_id, "retmode": "json"})
-    with urlopen(urljoin(EUTILS_URL, "esummary.fcgi?" + query)) as result:
-        json_loaded = json.loads(result)
+    url = urljoin(EUTILS_URL, "esummary.fcgi?" + query)
+    with urlopen(url, timeout=2) as result:
+        json_loaded = json.loads(result.read())
 
         # get the library layout (i.e., single or paired)
-        experiment_xml = json_loaded["result"][sra_id]["expxml"]
+        experiment_xml = html.unescape(json_loaded["result"][sra_id]["expxml"])
         experiment_xml = "<experiment>" + experiment_xml + "</experiment>"
         layout = list(
             ET.fromstring(experiment_xml)
@@ -77,13 +79,13 @@ def get_id_run_accessions(sra_id: str):
         return [(accession, layout) for accession in accessions]
 
 
-def get_fastq_urls(sra_run_accession: str, paired: bool):
+def get_fastq_url(sra_run_accession: str):
     """
-    Get ftp urls for downloading SRA fastqs.
+    Get ftp url for downloading SRA fastqs.
 
     Given an SRA run accession (these start with 'SRR') and the library
-    type (i.e., whether it's paired-end or not), return a list of
-    url(s) where the fastq file(s) for this accession can be found.
+    type (i.e., whether it's paired-end or not), return a url where the
+    fastq file(s) for this accession can be found.
 
     Args:
         sra_run_accession: the SRA accession for a run. These begin
@@ -91,24 +93,16 @@ def get_fastq_urls(sra_run_accession: str, paired: bool):
         paired: true if the run is paired-end, false otherwise.
 
     Returns:
-        A list of url strings for ftp locations of all fastq files for
-        this run. For a single-end library, this list will have length
-        1; for a paired-end library, it will have length 2.
+        An ftp URL string where fastqs for this accession can be found.
+        It will contain wildcards to account for the possibility of
+        multiple files per run.
     """
-    if not sra_run_accession.starts_with("SRR"):
+    if not sra_run_accession.startswith("SRR"):
         print("nope!")  # TODO make this an error
 
-    base_url = urljoin(ENA_URL, sra_run_accession[:6])
+    base_url = "/".join([ENA_URL, sra_run_accession[:6]])
     if len(sra_run_accession) > 9:
-        base_url = urljoin(base_url, "00" + sra_run_accession[-1])
-    base_url = urljoin(base_url, sra_run_accession)
+        base_url += "/" + "00" + sra_run_accession[-1]
+    base_url += "/" + sra_run_accession
 
-    if paired:
-        urls = [
-            urljoin(base_url, sra_run_accession + "_1.fastq.gz"),
-            urljoin(base_url, sra_run_accession + "_2.fastq.gz"),
-        ]
-    else:
-        urls = [urljoin(base_url, sra_run_accession + ".fastq.gz")]
-
-    return urls
+    return base_url + "/*.fastq.gz"

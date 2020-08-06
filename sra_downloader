@@ -5,10 +5,12 @@ and download all associated fastqs.
 """
 
 import argparse
+import os
 from pathlib import Path
 import posixpath
 import subprocess
 from urllib.parse import urlsplit
+import sys
 
 import sra
 
@@ -58,30 +60,24 @@ def main():
 
     # first, we need to convert our list of accessions to a list of
     # runs, because some SRA accessions contain multiple runs
+    print("looking up accession ids...", file=sys.stderr)
     accession_ids = [sra.get_accession_id(a) for a in accessions_to_lookup]
     run_accessions = []
+    print("looking up accession runs...", file=sys.stderr)
     for accession_id in accession_ids:
         run_accessions += sra.get_id_run_accessions(accession_id)
 
     # next, we convert our list of run accessions to a list of ftp URLs
     urls = []
     for run_accession, library_type in run_accessions:
-        urls += sra.get_fastq_urls(run_accession, library_type == "PAIRED")
+        urls.append(sra.get_fastq_url(run_accession))
 
     # finally, use curl to download all the fastqs
+    old_path = os.getcwd()
+    os.chdir(args.out_dir)
     for url in urls:
-        command = [
-            "curl",
-            "--output",
-            args.out_dir / (posixpath.basename(urlsplit(url).path)),
-            url,
-        ]
-        subprocess.run(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            check=True,
-        )
+        subprocess.run(["wget", url], check=True)
+    os.chdir(old_path)
 
 
 if __name__ == "__main__":
