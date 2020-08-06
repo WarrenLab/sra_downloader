@@ -37,6 +37,12 @@ def parse_args():
         type=argparse.FileType("r"),
         help="file containing list of accessions to download, one per line",
     )
+    parser.add_argument(
+        "-n",
+        "--no-prompt",
+        action="store_true",
+        help="do not prompt to download; just go ahead and do it",
+    )
     return parser.parse_args()
 
 
@@ -56,7 +62,7 @@ def main():
     if not args.out_dir.is_dir():
         print(
             "Requested output directory does not exist or is not a directory",
-            file=sys.stderr
+            file=sys.stderr,
         )
         sys.exit(1)
 
@@ -68,13 +74,28 @@ def main():
     print("looking up accession runs...", file=sys.stderr)
     for accession_id in accession_ids:
         run_accessions += sra.get_id_run_accessions(accession_id)
+    print("done with NCBI lookups", file=sys.stderr)
 
     # next, we convert our list of run accessions to a list of ftp URLs
+    print("\nDownloading the following accessions:", file=sys.stderr)
     urls = []
     for run_accession in run_accessions:
         urls.append(sra.get_fastq_url(run_accession))
+        print(urls[-1])
+
+    if not args.no_prompt:
+        responded_yes = False
+        while not responded_yes:
+            response = input("Start download? [Y/n]: ")
+            responded_yes = response in ["y", "Y", "yes", "Yes", "YES"]
+            if response in ["n", "N", "no", "No", "NO"]:
+                print(
+                    "OK, not downloading anything. Goodbye!", file=sys.stderr
+                )
+                sys.exit(0)
 
     # finally, use curl to download all the fastqs
+    print("Starting downloads...", file=sys.stderr)
     old_path = os.getcwd()
     os.chdir(args.out_dir)
     for url in urls:
