@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+"""
+Given one or more accessions associated with reads on SRA, look them up
+and download all associated fastqs.
+"""
+
+import argparse
+from pathlib import Path
+import posixpath
+import subprocess
+from urllib.parse import urlsplit
+
+import sra
+
+
+def parse_args():
+    """parse command line arguments"""
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "accession",
+        nargs="*",
+        help="accession to look up and download fastqs for",
+    )
+    parser.add_argument(
+        "-o",
+        "--out-dir",
+        type=Path,
+        help="output directory",
+        default=Path.cwd(),
+    )
+    parser.add_argument(
+        "-l",
+        "--list-file",
+        type=argparse.FileType("r"),
+        help="file containing list of accessions to download, one per line",
+    )
+    return parser.parse_args()
+
+
+def main():
+    """main method of script"""
+    args = parse_args()
+
+    # read accessions list
+    accessions_to_lookup = []
+    if args.list_file:
+        for line in args.list_file:
+            accessions_to_lookup.append(line.strip())
+    if args.accession:
+        accessions_to_lookup += args.accession
+
+    # make sure outpath is ok
+    if not args.out_dir.is_dir():
+        print("oops")  # TODO make error
+
+    # first, we need to convert our list of accessions to a list of
+    # runs, because some SRA accessions contain multiple runs
+    accession_ids = [sra.get_accession_id(a) for a in accessions_to_lookup]
+    run_accessions = []
+    for accession_id in accession_ids:
+        run_accessions += sra.get_id_run_accessions(accession_id)
+
+    # next, we convert our list of run accessions to a list of ftp URLs
+    urls = []
+    for run_accession, library_type in run_accessions:
+        urls += sra.get_fastq_urls(run_accession, library_type == "PAIRED")
+
+    # finally, use curl to download all the fastqs
+    for url in urls:
+        command = [
+            "curl",
+            "--output",
+            args.out_dir / (posixpath.basename(urlsplit(url).path)),
+            url,
+        ]
+        subprocess.run(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=True,
+        )
+
+
+if __name__ == "__main__":
+    main()
