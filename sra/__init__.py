@@ -126,7 +126,7 @@ def get_fastq_url(sra_run_accession: str) -> str:
 
     base_url = "/".join([ENA_URL, sra_run_accession[:6]])
     if len(sra_run_accession) > 9:
-        base_url += "/" + "00" + sra_run_accession[-1]
+        base_url += "/{:03d}".format(int(sra_run_accession[9:]))
     base_url += "/" + sra_run_accession
 
     return base_url + "/*.fastq.gz"
