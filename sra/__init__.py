@@ -117,13 +117,7 @@ def get_fastq_url(sra_run_accession: str) -> str:
         An ftp URL string where fastqs for this accession can be found.
         It will contain wildcards to account for the possibility of
         multiple files per run.
-
-    Raises:
-        QueryError: when an invalid run accession is given
     """
-    if not sra_run_accession.startswith("SRR"):
-        raise QueryError("Run accessions must start with 'SRR'")
-
     base_url = "/".join([ENA_URL, sra_run_accession[:6]])
     if len(sra_run_accession) > 9:
         base_url += "/{:03d}".format(int(sra_run_accession[9:]))
